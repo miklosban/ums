@@ -1,0 +1,164 @@
+#!/usr/bin/perl
+
+# UMS - a very simple repository manager
+# it uses scp to move file to a remote host
+# and a local txt database to follow the changes
+# Bán Miklós - 2009.11.03
+#
+# uploader file project comment
+
+
+
+$upload_file=$ARGV[0];       # a filename
+$project_name=$ARGV[1];      # a projectname
+$upload_comment=$ARGV[2];    # a comment for the file
+$REPOSITORY_DIR = "./UMS_REPOSITORY";
+
+
+unless(-f $upload_file){
+    die "What?!\n";
+}
+unless(-d $REPOSITORY_DIR){
+    mkdir $REPOSITORY_DIR or die "Cannot create UMS repository directory!\n";
+    `touch $REPOSITORY_DIR/repository.db`;
+}
+
+package projects;
+sub new 
+{
+    my($class) = shift;
+    my(%params) = @_;
+
+    bless 
+    {
+        "PROJECT_NAME" => $params{"PROJECT_NAME"},
+        "REMOTE_URL"   => $params{"REMOTE_URL"},
+        "REMOTE_USER"  => $params{"REMOTE_USER"},
+        "REMOTE_PATH"  => $params{"REMOTE_PATH"},
+        "LOCAL_PATH"   => $params{"LOCAL_PATH"}
+    }, $class;
+}
+
+
+package main;
+
+# CREATE project
+if ($project_name eq 'olahgumi') {
+    $project = projects->new('PROJECT_NAME'=>'olahgumi','REMOTE_URL'=>'192.168.3.10','REMOTE_USER'=>'nebraska','REMOTE_PATH'=>'/var/www/szamlazas/','LOCAL_PATH'=>'szamlazas');
+}
+elsif ($project_name eq 'olahweb') {
+    $project = projects->new('PROJECT_NAME'=>'olahweb','REMOTE_URL'=>'www.olahgumi.hu','REMOTE_USER'=>'banm','REMOTE_PATH'=>'/var/www/olahgumi.hu/','LOCAL_PATH'=>'olahgumi2.hu');
+}
+elsif ($project_name eq 'ornis') {
+    $project = projects->new('PROJECT_NAME'=>'ornis','REMOTE_URL'=>'vocs.unideb.hu','REMOTE_USER'=>'banm','REMOTE_PATH'=>'web/kornel/pub/ornis/','LOCAL_PATH'=>'Ornis');
+}
+elsif ($project_name eq 'calandrella') {
+    $project = projects->new('PROJECT_NAME'=>'calandrella','REMOTE_URL'=>'vocs.unideb.hu','REMOTE_USER'=>'banm','REMOTE_PATH'=>'web/kornel/pub/calandrella/','LOCAL_PATH'=>'calandrella');
+}
+elsif ($project_name eq 'kitaibelia') {
+    $project = projects->new('PROJECT_NAME'=>'kitaibelia','REMOTE_URL'=>'vocs.unideb.hu','REMOTE_USER'=>'banm','REMOTE_PATH'=>'web/kornel/pub/kitaibelia/','LOCAL_PATH'=>'kitaibelia');
+}
+elsif ($project_name eq 'phabajin') {
+    $project = projects->new('PROJECT_NAME'=>'phabajin','REMOTE_URL'=>'vocs.unideb.hu','REMOTE_USER'=>'banm','REMOTE_PATH'=>'/var/www/zoology.unideb.hu/miki/','LOCAL_PATH'=>'phabajin.net');
+}
+elsif ($project_name eq 'vocs') {
+    $project = projects->new('PROJECT_NAME'=>'vocs','REMOTE_URL'=>'vocs.unideb.hu','REMOTE_USER'=>'banm','REMOTE_PATH'=>'web/vocs/','LOCAL_PATH'=>'vocs_frame');
+}
+elsif ($project_name eq 'met') {
+    $project = projects->new('PROJECT_NAME'=>'met','REMOTE_URL'=>'vocs.unideb.hu','REMOTE_USER'=>'banm','REMOTE_PATH'=>'web/zool/met/','LOCAL_PATH'=>'met');
+}
+elsif ($project_name eq 'mwrap') {
+    $project = projects->new('PROJECT_NAME'=>'mwrap','REMOTE_URL'=>'vocs.unideb.hu','REMOTE_USER'=>'banm','REMOTE_PATH'=>'web/zool/mwrap/','LOCAL_PATH'=>'mwrap');
+}
+elsif ($project_name eq 'zool') {
+    $project = projects->new('PROJECT_NAME'=>'zool','REMOTE_URL'=>'vocsi','REMOTE_USER'=>'banm','REMOTE_PATH'=>'web/zool/','LOCAL_PATH'=>'zoology');
+}
+elsif ($project_name eq 'biomaps') {
+    $project = projects->new('PROJECT_NAME'=>'biomaps','REMOTE_URL'=>'biomaps.unideb.hu','REMOTE_USER'=>'banm','REMOTE_PATH'=>'/var/www/','LOCAL_PATH'=>'biomaps');
+}
+elsif ($project_name eq 'dinpi') {
+    $project = projects->new('PROJECT_NAME'=>'dinpi','REMOTE_URL'=>'carabuss','REMOTE_USER'=>'banm','REMOTE_PATH'=>'/var/www/biomaps/','LOCAL_PATH'=>'biomaps');
+}
+elsif ($project_name eq 'milvus') {
+    $project = projects->new('PROJECT_NAME'=>'milvus','REMOTE_URL'=>'milvus','REMOTE_USER'=>'banm','REMOTE_PATH'=>'/var/www/html/biomaps/','LOCAL_PATH'=>'biomaps');
+}
+#elsif ($project_name eq 'danube') {
+#    $project = projects->new('PROJECT_NAME'=>'danube','REMOTE_URL'=>'biomaps.unideb.hu','REMOTE_USER'=>'banm','REMOTE_PATH'=>'/var/www/danube/','LOCAL_PATH'=>'danubedata.org');
+#}
+elsif ($project_name eq 'mfs') {
+    $project = projects->new('PROJECT_NAME'=>'mfs','REMOTE_URL'=>'sokar','REMOTE_USER'=>'banm','REMOTE_PATH'=>'/var/www/','LOCAL_PATH'=>'mfs_cgi');
+}
+elsif ($project_name eq 'bodobacs') {
+    $project = projects->new('PROJECT_NAME'=>'bodobacs','REMOTE_URL'=>'sokar','REMOTE_USER'=>'banm','REMOTE_PATH'=>'/var/www/bodobacs/','LOCAL_PATH'=>'bodobacs');
+}
+elsif ($project_name eq 'grass') {
+    $project = projects->new('PROJECT_NAME'=>'grassland','REMOTE_URL'=>'vocs.unideb.hu','REMOTE_USER'=>'banm','REMOTE_PATH'=>'/var/www/vocs.unideb.hu/grassland/','LOCAL_PATH'=>'grassland');
+} 
+elsif ($project_name eq 'biomap') {
+    $project = projects->new('PROJECT_NAME'=>'biomap','REMOTE_URL'=>'biomaps.unideb.hu','REMOTE_USER'=>'banm','REMOTE_PATH'=>'/var/www/','LOCAL_PATH'=>'biomaps');
+}
+else {
+    die 'Not a valid project: '.$project_name. "\n";
+}
+
+$pwd = `pwd`;
+@dp = split /\//, $pwd;
+chomp(@dp);
+$dpath = '';
+$dpp = 0;
+foreach $i (@dp) {
+    if ($dpp) {
+        $dpath .= "$i/";
+    }
+    if ($i eq  $project->{'LOCAL_PATH'}) {
+        $dpp = 1;
+    }
+}
+
+open(REPOSITORY_DB, "< $REPOSITORY_DIR/repository.db") or die "can't open $!";
+
+@ids = ();
+
+while (defined ($line = <REPOSITORY_DB>)) {
+    chomp $line;
+    ($id,$gc_project,$gc_pwd,$gc_file,$gc_comment) = split /,/,$line;
+    push @ids, $id;
+}
+close(REPOSITORY_DB);
+@ids = sort {$b <=> $a} @ids;
+$id = $ids[0]+1;
+
+if ($project->{'PROJECT_NAME'} eq 'olahgumi') {
+
+    $getcmd = "scp ". $project->{'REMOTE_USER'}."@".$project->{'REMOTE_URL'}.":".$project->{'REMOTE_PATH'}.$dpath.$upload_file." UMS_REPOSITORY/$id"."__".$upload_file;
+    #parallel-scp -v -l nebraska -h ~/remote.txt Szamlazas.php /var/www/szamlazas/
+    $putcmd = "parallel-scp -v -l ".$project->{'REMOTE_USER'}." -h ~/remote.txt $upload_file ".$project->{'REMOTE_PATH'}.$dpath." 1>&2";
+
+} else {
+    $getcmd = "scp ". $project->{'REMOTE_USER'}."@".$project->{'REMOTE_URL'}.":".$project->{'REMOTE_PATH'}.$dpath.$upload_file." UMS_REPOSITORY/$id"."__".$upload_file;
+
+    $putcmd = "scp $upload_file ". $project->{'REMOTE_USER'}."@".$project->{'REMOTE_URL'}.":".$project->{'REMOTE_PATH'}.$dpath;
+}
+#print $getcmd;
+
+`$getcmd`;
+$r = `echo $?`;
+if ($r > 0) {
+	print "Download failed...";
+} else {
+	print "Down ...";
+}
+print "Register...";
+open (REPOSITORY_DB, ">> $REPOSITORY_DIR/repository.db");
+print REPOSITORY_DB "$id,\"$project_name\",\"$dpath\",\"$upload_file\",\"$upload_comment\"\n";
+close(REPOSITORY_DB);
+
+`$putcmd`;
+$r = `echo $?`;
+if ($r > 0) {
+	print "Upload failed...\n";
+} else {
+	print " UP -> $id $upload_file\n";
+}
+
+

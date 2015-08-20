@@ -1,0 +1,135 @@
+#!/usr/bin/perl
+
+use Getopt::Long;
+use Config::Simple;
+use File::Spec::Functions qw(catfile);
+
+# UMS - a simple repository manager
+# it uses scp to move file to a remote host
+# and a local txt database to follow the changes
+# Bán Miklós - 2015.08.20
+#
+# uploader file [file file ...] project --comment "new commit"
+
+my @upload_files;
+my $upload_comment;
+my $REPOSITORY_DIR = "./UMS_REPOSITORY";
+my $conf = '.ums_projects';
+$conf = catfile($ENV{'HOME'}, $conf);
+if ( ! -e $conf) {die "$!"};
+
+GetOptions ('comment:s' => \$upload_comment, '<>' => \&args);
+sub args {
+    push @upload_files, @_;
+}
+
+# last argument is the project name
+my $project_name = pop @upload_files;
+
+# no file names passed
+#unless(-f $upload_file){
+if(@upload_files==0){
+    die "What?!\n";
+}
+
+unless(-d $REPOSITORY_DIR){
+    mkdir $REPOSITORY_DIR or die "Cannot create UMS repository directory!\n";
+    `touch $REPOSITORY_DIR/repository.db`;
+}
+
+package projects;
+sub new 
+{
+    my($class) = shift;
+    my(%params) = @_;
+
+    bless 
+    {
+        "PROJECT_NAME" => $params{"PROJECT_NAME"},
+        "REMOTE_URL"   => $params{"REMOTE_URL"},
+        "REMOTE_USER"  => $params{"REMOTE_USER"},
+        "REMOTE_PATH"  => $params{"REMOTE_PATH"},
+        "LOCAL_PATH"   => $params{"LOCAL_PATH"}
+    }, $class;
+}
+
+
+package main;
+
+# CREATE project
+# would desired to read from config file
+my %project;
+if (-e $conf) {
+    $cfg = new Config::Simple($conf);
+    $project = $cfg->param(-block=>$project_name);
+}
+if ($project->{'PROJECT_NAME'} eq '') {
+    die 'Not a valid project: '.$project_name. "\n";
+}
+
+# local path => destination path processing
+$pwd = `pwd`;
+@dp = split /\//, $pwd;
+chomp(@dp);
+$dpath = '';
+$dpp = 0;
+foreach $i (@dp) {
+    if ($dpp) {
+        $dpath .= "$i/";
+    }
+    if ($i eq  $project->{'LOCAL_PATH'}) {
+        $dpp = 1;
+    }
+}
+print $dpath;
+exit;
+
+foreach $argnum (0 .. @upload_files) {
+    my $upload_file = @upload_files[$argnum];
+    if(length($upload_file) == 0) { next }
+    
+    # repository update
+    open(REPOSITORY_DB, "< $REPOSITORY_DIR/repository.db") or die "can't open $!";
+    my @ids = ();
+    while (defined ($line = <REPOSITORY_DB>)) {
+        chomp $line;
+        ($id,$gc_project,$gc_pwd,$gc_file,$gc_comment) = split /,/,$line;
+        push @ids, $id;
+    }
+    close(REPOSITORY_DB);
+    @ids = sort {$b <=> $a} @ids;
+    $id = $ids[0]+1;
+    
+    # create command
+    if ($project->{'PARALLEL'} ne '0') 
+    {
+        # parallel scp should be set
+        $getcmd = "scp ". $project->{'REMOTE_USER'}."@".$project->{'REMOTE_URL'}.":".$project->{'REMOTE_PATH'}.$dpath.$upload_file." UMS_REPOSITORY/$id"."__".$upload_file;
+        $putcmd = "parallel-scp -v -l ".$project->{'REMOTE_USER'}." -h ~/remote_$project->{'PARALLEL'}.txt $upload_file ".$project->{'REMOTE_PATH'}.$dpath." 1>&2";
+    } 
+    else 
+    {
+        $getcmd = "scp ". $project->{'REMOTE_USER'}."@".$project->{'REMOTE_URL'}.":".$project->{'REMOTE_PATH'}.$dpath.$upload_file." UMS_REPOSITORY/$id"."__".$upload_file;
+        $putcmd = "scp $upload_file ". $project->{'REMOTE_USER'}."@".$project->{'REMOTE_URL'}.":".$project->{'REMOTE_PATH'}.$dpath;
+    }
+
+    `$getcmd`;
+    $r = `echo $?`;
+    if ($r > 0) {
+	    print "Download failed...";
+    } else {
+	    print "Down ...";
+    }
+    print "Register...";
+    open (REPOSITORY_DB, ">> $REPOSITORY_DIR/repository.db");
+    print REPOSITORY_DB "$id,\"$project_name\",\"$dpath\",\"$upload_file\",\"$upload_comment\"\n";
+    close(REPOSITORY_DB);
+
+    `$putcmd`;
+    $r = `echo $?`;
+    if ($r > 0) {
+	    print "Upload failed...\n";
+    } else {
+	    print " UP -> $id $upload_file\n";
+    }
+}
