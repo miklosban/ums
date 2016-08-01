@@ -108,7 +108,7 @@ foreach $argnum (0 .. @upload_files) {
     else 
     {
         $getcmd = "scp ". $project->{'REMOTE_USER'}."@".$project->{'REMOTE_URL'}.":".$project->{'REMOTE_PATH'}.$dpath.$upload_file." UMS_REPOSITORY/$id"."__".$upload_file;
-        $putcmd = "scp -p $upload_file ". $project->{'REMOTE_USER'}."@".$project->{'REMOTE_URL'}.":".$project->{'REMOTE_PATH'}.$dpath;
+        $putcmd = "scp $upload_file ". $project->{'REMOTE_USER'}."@".$project->{'REMOTE_URL'}.":".$project->{'REMOTE_PATH'}.$dpath;
     }
 
     `$getcmd`;
